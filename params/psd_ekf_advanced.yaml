@@ -1,0 +1,162 @@
+### PSD EKF Advanced Configuration - Minimal Drift ###
+# Optimized configuration using multiple sensors to minimize drift
+# Fuses: Xsens IMU, ZED visual-inertial odometry, ZED IMU
+
+ekf_filter_node:
+    ros__parameters:
+        # Higher frequency for better integration
+        frequency: 100.0
+        
+        # Sensor timeout
+        sensor_timeout: 0.05
+        
+        # 2D mode for racing track
+        two_d_mode: true
+        
+        # Transform settings
+        transform_time_offset: 0.0
+        transform_timeout: 0.0
+        
+        # Diagnostics
+        print_diagnostics: true
+        debug: false
+        
+        # State publication
+        permit_corrected_publication: false
+        publish_acceleration: true
+        publish_tf: true
+        
+        # Frame configuration
+        map_frame: map
+        odom_frame: odom
+        base_link_frame: ego_vehicle
+        world_frame: odom
+        
+        # ========================================
+        # SENSOR CONFIGURATION
+        # ========================================
+        
+        # --- XSENS IMU (High-quality orientation and acceleration) ---
+        imu0: /imu/data
+        imu0_config: [false, false, false,  # Position
+                      true,  true,  true,    # Orientation (high-quality from Xsens)
+                      false, false, false,   # Linear velocity
+                      true,  true,  true,    # Angular velocity (high-quality gyros)
+                      false, false, false]   # Linear acceleration (use ZED for this)
+        imu0_nodelay: true
+        imu0_differential: false
+        imu0_relative: false
+        imu0_queue_size: 50
+        imu0_remove_gravitational_acceleration: true
+        # Trust Xsens orientation highly
+        imu0_pose_rejection_threshold: 0.8
+        imu0_twist_rejection_threshold: 0.8
+        imu0_linear_acceleration_rejection_threshold: 0.8
+        
+        # --- ZED2 VISUAL-INERTIAL ODOMETRY (Primary position source) ---
+        # ZED2 provides good position estimates with loop closure
+        odom0: /zed/zed_node/odom
+        odom0_config: [true,  true,  false,  # Position x,y (trust ZED visual odometry)
+                       false, false, false,   # Orientation (use IMU instead)
+                       true,  true,  false,   # Linear velocity x,y (from visual flow)
+                       false, false, false,   # Angular velocity (use IMU)
+                       false, false, false]   # Acceleration
+        odom0_differential: false  # Use absolute position to prevent drift
+        odom0_relative: false      # Use global estimates
+        odom0_queue_size: 20
+        odom0_nodelay: true
+        # More forgiving thresholds for visual odometry
+        odom0_pose_rejection_threshold: 3.0
+        odom0_twist_rejection_threshold: 2.0
+        
+        # --- ZED2 IMU (Redundant IMU for acceleration) ---
+        # Use ZED IMU for linear acceleration (may be better filtered)
+        imu1: /zed/zed_node/imu/data
+        imu1_config: [false, false, false,  # Position
+                      false, false, false,   # Orientation (use Xsens)
+                      false, false, false,   # Linear velocity  
+                      false, false, false,   # Angular velocity (use Xsens)
+                      true,  true,  false]   # Linear acceleration x,y (for dead reckoning)
+        imu1_nodelay: true
+        imu1_differential: false
+        imu1_relative: false
+        imu1_queue_size: 50
+        imu1_remove_gravitational_acceleration: true
+        
+        # --- CONTROL INPUT (MPC commands for prediction) ---
+        use_control: true
+        stamped_control: false
+        control_timeout: 0.1
+        control_config: [true, false, false, false, false, true]
+        
+        # Racing vehicle dynamics
+        acceleration_limits: [5.0, 0.0, 0.0, 0.0, 0.0, 3.0]
+        deceleration_limits: [8.0, 0.0, 0.0, 0.0, 0.0, 3.0]
+        acceleration_gains: [0.95, 0.0, 0.0, 0.0, 0.0, 0.95]
+        deceleration_gains: [0.95, 0.0, 0.0, 0.0, 0.0, 0.95]
+        
+        # ========================================
+        # COVARIANCE TUNING
+        # ========================================
+        
+        # Process noise covariance - Lower values = trust model more
+        # Order: x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az
+        process_noise_covariance: [
+            # Position - low noise since we have good visual odometry
+            0.01,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.01,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   0.001, 0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            # Orientation - very low noise for high-quality IMU
+            0.0,   0.0,   0.0,   0.001, 0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.001, 0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.003, 0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            # Linear velocity - moderate noise
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.001, 0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            # Angular velocity - low noise for gyros
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.002, 0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.002, 0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.01,  0.0,   0.0,   0.0,
+            # Linear acceleration - moderate noise
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.05,  0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.05,  0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.001
+        ]
+        
+        # Initial estimate covariance - start with reasonable confidence
+        initial_estimate_covariance: [
+            # Position - moderate initial uncertainty
+            0.5,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.5,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   1e-9,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            # Orientation - low initial uncertainty (IMU converges fast)
+            0.0,   0.0,   0.0,   0.01,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.01,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            # Velocity - moderate uncertainty
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.5,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.5,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   1e-9,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+            # Angular velocity - low uncertainty
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.01,  0.0,   0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.01,  0.0,   0.0,   0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.05,  0.0,   0.0,   0.0,
+            # Acceleration - moderate uncertainty
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.1,   0.0,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.1,   0.0,
+            0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   1e-9
+        ]
+        
+        # Advanced parameters for drift reduction
+        # Smooth sensor data over time
+        smooth_lagged_data: true
+        history_length: 3.0
+        
+        # Enable advanced diagnostics
+        # This helps identify which sensor is causing issues
+        publish_diagnostics: true
+        
+        # Dynamic covariance scaling
+        # Automatically adjusts sensor trust based on motion
+        dynamic_process_noise_covariance: false
