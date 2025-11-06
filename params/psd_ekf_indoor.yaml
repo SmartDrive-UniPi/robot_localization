@@ -1,40 +1,55 @@
-### PSD EKF Configuration ###
-# This configuration fuses IMU data with visual odometry from cone detection
-# for autonomous racing localization
+### PSD Indoor EKF Configuration ###
+# This configuration is for indoor use without GNSS
+# It fuses ZED visual odometry with IMU data
 
-ekf_filter_node:
+/**:
     ros__parameters:
         # Run at 50Hz for racing applications
         frequency: 50.0
-        
+
         # Sensor timeout - keep short for racing
         sensor_timeout: 0.05
-        
+
         # We operate in 2D for track racing
         two_d_mode: true
-        
+
         # Transform settings
         transform_time_offset: 0.0
         transform_timeout: 0.0
-        
+
         # Diagnostics
         print_diagnostics: true
         debug: false
-        
+
         # State publication settings
         permit_corrected_publication: false
         publish_acceleration: true
         publish_tf: true
-        
+
         # Frame configuration for PSD vehicle
         map_frame: map
         odom_frame: odom
-        base_link_frame: chassis  # Main robot chassis frame
+        base_link_frame: zed_camera_link  # Using ZED camera frame for indoor
         world_frame: odom
-        
+
         # --- INPUT SOURCES ---
-        
-        # ZED IMU data (has proper covariances)
+
+        # ZED Camera Visual Odometry (Primary for indoor)
+        # Provides position, orientation and velocity estimates
+        odom0: /zed/zed_node/odom
+        odom0_config: [true,  true,  false,  # x, y, z position (use x,y from ZED)
+                       false, false, true,    # roll, pitch, yaw (use yaw from ZED)
+                       true,  true,  false,   # x, y, z velocity (use x,y velocities)
+                       false, false, false,   # roll, pitch, yaw velocity
+                       false, false, false]   # x, y, z acceleration
+        odom0_differential: false
+        odom0_relative: false
+        odom0_queue_size: 10
+        odom0_pose_rejection_threshold: 5.0   # Reject outliers
+        odom0_twist_rejection_threshold: 3.0
+
+        # ZED IMU data
+        # Provides angular velocities and accelerations
         imu0: /zed/zed_node/imu/data
         imu0_config: [false, false, false,  # x, y, z position
                       false, false, false,   # roll, pitch, yaw orientation (use from odometry)
@@ -46,63 +61,34 @@ ekf_filter_node:
         imu0_relative: false
         imu0_queue_size: 10
         imu0_remove_gravitational_acceleration: true
-        
-        # MTi-680 INS/GNSS Odometry (Primary source when available)
-        # Provides fused position and velocity from INS/GNSS
-        odom0: /odometry
-        odom0_config: [true,  true,  false,  # x, y, z position (use x,y from INS)
-                       false, false, true,    # roll, pitch, yaw (use yaw from INS)
-                       true,  true,  false,   # x, y, z velocity (use x,y velocities)
-                       false, false, false,   # roll, pitch, yaw velocity
-                       false, false, false]   # x, y, z acceleration
-        odom0_differential: false
-        odom0_relative: false
-        odom0_queue_size: 10
-        odom0_pose_rejection_threshold: 5.0   # Reject outliers
-        odom0_twist_rejection_threshold: 3.0
 
-        # ZED Camera Visual Odometry (Backup/secondary source)
-        # This provides position and orientation estimates when INS is unavailable
-        odom1: /zed/zed_node/odom
-        odom1_config: [true,  true,  false,  # x, y, z position (use x,y from ZED)
-                       false, false, true,    # roll, pitch, yaw (use yaw from ZED)
-                       true,  true,  false,   # x, y, z velocity (use x,y velocities)
-                       false, false, false,   # roll, pitch, yaw velocity
-                       false, false, false]   # x, y, z acceleration
-        odom1_differential: false
-        odom1_relative: false
-        odom1_queue_size: 10
-        odom1_pose_rejection_threshold: 5.0   # Reject outliers
-        odom1_twist_rejection_threshold: 3.0
-
-        # Visual odometry from SLAM (when available)
-        # Uncomment when SLAM is running
+        # Optional: SLAM odometry input (when available)
+        # Uncomment to use cone-based SLAM for position correction
         # odom1: /slam/pose
-        # odom1_config: [true,  true,  false,  # x, y, z position (use x,y from SLAM)
-        #                false, false, true,    # roll, pitch, yaw (use yaw from SLAM)
+        # odom1_config: [true,  true,  false,  # x, y, z position
+        #                false, false, true,    # roll, pitch, yaw
         #                false, false, false,   # x, y, z velocity
         #                false, false, false,   # roll, pitch, yaw velocity
         #                false, false, false]   # x, y, z acceleration
         # odom1_differential: false
         # odom1_relative: false
         # odom1_queue_size: 5
-        # odom1_pose_rejection_threshold: 5.0   # Reject outliers
-        # odom1_twist_rejection_threshold: 2.0
-        
-        # Control input from MPC (if available)
-        use_control: false  # Disabled until control is properly configured
+        # odom1_pose_rejection_threshold: 5.0
+
+        # Control input from controllers
+        use_control: false  # Enable when control commands are available
         stamped_control: false
         control_timeout: 0.1
         # Control config: vx, vy, vz, vroll, vpitch, vyaw
         control_config: [true, false, false, false, false, true]
-        
+
         # Racing vehicle limits
         acceleration_limits: [5.0, 0.0, 0.0, 0.0, 0.0, 3.0]
         deceleration_limits: [8.0, 0.0, 0.0, 0.0, 0.0, 3.0]
         acceleration_gains: [0.9, 0.0, 0.0, 0.0, 0.0, 0.9]
         deceleration_gains: [0.9, 0.0, 0.0, 0.0, 0.0, 0.9]
-        
-        # Process noise covariance - tuned for racing
+
+        # Process noise covariance - tuned for indoor racing
         # Order: x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az
         process_noise_covariance: [0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
                                    0.0,   0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
@@ -119,7 +105,7 @@ ekf_filter_node:
                                    0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.05,  0.0,   0.0,
                                    0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.05,  0.0,
                                    0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.001]
-                                   
+
         # Initial estimate covariance
         initial_estimate_covariance: [1.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
                                       0.0,   1.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
